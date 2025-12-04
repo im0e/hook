@@ -9,13 +9,26 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 CERT_DIR="$PROJECT_ROOT/resources/certificates"
-IP_ADDRESS="${1:-localhost}"
+IP_ADDRESS="${1:-127.0.0.1}"
 
 # Create certificates directory
 mkdir -p "$CERT_DIR"
 
 echo "Generating self-signed certificates in $CERT_DIR..."
 echo "IP/Hostname: $IP_ADDRESS"
+
+# Build alt_names section based on input
+if [[ "$IP_ADDRESS" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    # Input is an IP address
+    ALT_NAMES="DNS.1 = localhost
+IP.1 = 127.0.0.1
+IP.2 = $IP_ADDRESS"
+else
+    # Input is a hostname
+    ALT_NAMES="DNS.1 = localhost
+DNS.2 = $IP_ADDRESS
+IP.1 = 127.0.0.1"
+fi
 
 # Create OpenSSL config with SAN
 cat > "$CERT_DIR/openssl.cnf" <<EOF
@@ -39,10 +52,7 @@ basicConstraints = CA:FALSE
 keyUsage = digitalSignature, keyEncipherment
 
 [alt_names]
-DNS.1 = localhost
-DNS.2 = $IP_ADDRESS
-IP.1 = 127.0.0.1
-IP.2 = $IP_ADDRESS
+$ALT_NAMES
 EOF
 
 openssl req -x509 \
@@ -60,7 +70,6 @@ echo ""
 echo "✓ Certificates generated successfully!"
 echo "  - Certificate: $CERT_DIR/cert.pem"
 echo "  - Private Key: $CERT_DIR/key.pem"
-echo "  - Valid for: $IP_ADDRESS, localhost, 127.0.0.1"
 echo ""
 echo "Add this to your config.toml to enable HTTPS:"
 echo ""
