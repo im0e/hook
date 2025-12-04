@@ -4,7 +4,8 @@ mod ops;
 mod security;
 
 use axum::{routing::post, Router};
-use std::{net::SocketAddr, sync::Arc};
+use axum_server::tls_rustls::RustlsConfig;
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tracing::info;
 
 #[tokio::main]
@@ -25,11 +26,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Router Setup
     let app = Router::new()
         .route("/webhook", post(handlers::github_webhook))
-        .with_state(shared_state);
+        .with_state(shared_state.clone());
 
     // Start Server
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    if let Some(tls) = &shared_state.config.tls {
+        let rustls_config = RustlsConfig::from_pem_file(
+            PathBuf::from(&tls.cert_path),
+            PathBuf::from(&tls.key_path),
+        )
+        .await?;
+
+        info!("HTTPS enabled");
+        axum_server::bind_rustls(addr, rustls_config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        info!("Running in HTTP mode (no TLS configured)");
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
 }

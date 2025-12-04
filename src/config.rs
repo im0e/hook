@@ -5,10 +5,17 @@ use tokio::fs;
 
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct TlsConfig {
+    pub cert_path: String,
+    pub key_path: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct AppConfig {
     pub host: String,
     pub port: u16,
     pub secret: String,
+    pub tls: Option<TlsConfig>,
     pub repos: HashMap<String, RepoConfig>,
 }
 

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8.7"
+axum-server = { version = "0.7.3", features = ["tls-rustls"] }
 bytes = "1.11.0"
 hex = "0.4.3"
 hmac = "0.12.1"
