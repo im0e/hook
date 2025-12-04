@@ -1,0 +1,16 @@
+# config.toml
+host = "0.0.0.0"
+port = 3000
+secret = "my_super_secure_github_secret"
+
+# Repository 1
+[repos."im0e/my-website"]
+path = "/var/www/my-website"
+branch = "refs/heads/main"
+deploy_command = "bash ./deploy.sh"
+
+# Repository 2
+[repos."im0e/backend-api"]
+path = "/opt/backend-api"
+branch = "refs/heads/production"
+deploy_command = "systemctl restart my-backend"
