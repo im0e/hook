@@ -14,3 +14,8 @@ deploy_command = "bash ./deploy.sh"
 path = "/opt/backend-api"
 branch = "refs/heads/production"
 deploy_command = "systemctl restart my-backend"
+
+[repos."im0e/other-website"]
+path = "/var/www/my-website"
+branch = "refs/heads/main"
+deploy_command = "bash ./deploy.sh"
