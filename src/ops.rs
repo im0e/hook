@@ -5,12 +5,11 @@ use std::time::Instant;
 use tokio::{fs, process::Command};
 use tracing::{error, info, debug, warn, instrument};
 
-#[instrument(skip(config), fields(path = %config.path))]
-pub async fn perform_update(name: String, config: RepoConfig) {
+pub async fn perform_update(name: String, config: RepoConfig, git_token: Option<String>) {
     let start = Instant::now();
     info!(repo = %name, "Starting deployment");
     
-    match update_logic(&name, &config).await {
+    match update_logic(&name, &config, git_token).await {
         Ok(()) => {
             let duration = start.elapsed();
             info!(
@@ -31,7 +30,7 @@ pub async fn perform_update(name: String, config: RepoConfig) {
     }
 }
 
-async fn update_logic(name: &str, config: &RepoConfig) -> std::io::Result<()> {
+async fn update_logic(name: &str, config: &RepoConfig, git_token: Option<String>) -> std::io::Result<()> {
     let path = Path::new(&config.path);
 
     // 1. Git Operations
@@ -44,7 +43,16 @@ async fn update_logic(name: &str, config: &RepoConfig) -> std::io::Result<()> {
             fs::create_dir_all(parent).await?;
             debug!(repo = name, parent = ?parent, "Created parent directories");
         }
-        let url = format!("git@github.com:{}.git", name);
+        
+        // Use HTTPS with token if available, otherwise SSH
+        let url = if let Some(token) = git_token {
+            debug!(repo = name, "Using HTTPS with authentication token");
+            format!("https://x-access-token:{}@github.com/{}.git", token, name)
+        } else {
+            debug!(repo = name, "Using SSH (no token configured)");
+            format!("git@github.com:{}.git", name)
+        };
+        
         run_command(name, "git", &["clone", &url, config.path.as_str()], None).await?;
     }
 

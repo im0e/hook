@@ -16,6 +16,7 @@ pub struct AppConfig {
     pub port: u16,
     pub secret: String,
     pub tls: Option<TlsConfig>,
+    pub git_token: Option<String>,
     pub repos: HashMap<String, RepoConfig>,
 }
 

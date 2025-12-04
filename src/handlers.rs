@@ -100,9 +100,10 @@ pub async fn github_webhook(
                 // Fire and Forget (Async Task)
                 let config_clone = repo_config.clone();
                 let name_clone = repo_name.to_string();
+                let token = state.config.git_token.clone();
                 
                 tokio::spawn(async move {
-                    ops::perform_update(name_clone, config_clone).await;
+                    ops::perform_update(name_clone, config_clone, token).await;
                 });
                 
                 return StatusCode::OK;
