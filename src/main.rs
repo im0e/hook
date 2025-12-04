@@ -6,19 +6,33 @@ mod security;
 use axum::{routing::post, Router};
 use axum_server::tls_rustls::RustlsConfig;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
-use tracing::info;
+use tracing::{info, debug, Level};
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize Logging
-    tracing_subscriber::fmt::init();
+    // Initialize Logging with enhanced formatting
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+        )
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
+        .init();
 
     // Load Config
     let config = config::load_config().await?;
     let addr_str = format!("{}:{}", config.host, config.port);
     let addr: SocketAddr = addr_str.parse()?;
 
-    info!("Starting Rusty-Deploy on {}", addr);
+    info!("Starting hOOk on {}", addr);
+    debug!("Loaded {} repository configurations", config.repos.len());
+    for (name, repo) in &config.repos {
+        debug!("  - {} -> {} (branch: {})", name, repo.path, repo.branch);
+    }
 
     // Shared State
     let shared_state = Arc::new(handlers::AppState { config });

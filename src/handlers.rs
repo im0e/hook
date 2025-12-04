@@ -6,18 +6,29 @@ use axum::{
 };
 use simd_json::prelude::*;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{info, warn, debug, error, instrument};
 
 /// The shared state structure
 pub struct AppState {
     pub config: AppConfig,
 }
 
+#[instrument(skip(state, headers, body), fields(payload_size = body.len()))]
 pub async fn github_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
+    debug!("Received webhook request ({} bytes)", body.len());
+    
+    // Log relevant headers
+    if let Some(event) = headers.get("x-github-event") {
+        debug!("GitHub event: {:?}", event);
+    }
+    if let Some(delivery) = headers.get("x-github-delivery") {
+        debug!("Delivery ID: {:?}", delivery);
+    }
+
     // 1. Extract Signature
     let signature = headers
         .get("x-hub-signature-256")
@@ -26,9 +37,10 @@ pub async fn github_webhook(
 
     // 2. Security Check (HMAC)
     if !security::verify_signature(&state.config.secret, &body, signature) {
-        warn!("Unauthorized access attempt detected.");
+        warn!(signature_present = !signature.is_empty(), "Unauthorized access attempt detected");
         return StatusCode::UNAUTHORIZED;
     }
+    debug!("Signature verified successfully");
 
     // 3. High-Perf Parsing (simd-json)
     // We clone bytes to Vec because simd-json modifies input in-place for performance
@@ -37,17 +49,36 @@ pub async fn github_webhook(
     // simd_json::to_borrowed_value is the fastest way to read JSON in Rust
     let payload = match simd_json::to_borrowed_value(&mut body_vec) {
         Ok(json) => json,
-        Err(_) => return StatusCode::BAD_REQUEST,
+        Err(e) => {
+            error!("Failed to parse JSON payload: {}", e);
+            return StatusCode::BAD_REQUEST;
+        }
     };
 
     // 4. Extract Data (Zero allocations for strings)
     let repo_name = payload["repository"]["full_name"].as_str().unwrap_or("");
     let push_ref = payload["ref"].as_str().unwrap_or("");
+    let sender = payload["sender"]["login"].as_str().unwrap_or("unknown");
+    let commit_count = payload["commits"].as_array().map(|c| c.len()).unwrap_or(0);
+
+    debug!(
+        repo = repo_name,
+        branch = push_ref,
+        sender = sender,
+        commits = commit_count,
+        "Parsed webhook payload"
+    );
 
     // 5. Routing Logic
     if let Some(repo_config) = state.config.repos.get(repo_name) {
         if push_ref == repo_config.branch {
-            info!("Trigger detected for {} on {}", repo_name, push_ref);
+            info!(
+                repo = repo_name,
+                branch = push_ref,
+                sender = sender,
+                commits = commit_count,
+                "Trigger matched - starting deployment"
+            );
             
             // Fire and Forget (Async Task)
             let config_clone = repo_config.clone();
@@ -58,7 +89,16 @@ pub async fn github_webhook(
             });
             
             return StatusCode::OK;
+        } else {
+            debug!(
+                repo = repo_name,
+                received_ref = push_ref,
+                expected_ref = repo_config.branch.as_str(),
+                "Branch mismatch - ignoring"
+            );
         }
+    } else {
+        debug!(repo = repo_name, "Repository not configured - ignoring");
     }
 
     StatusCode::OK
