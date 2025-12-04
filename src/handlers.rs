@@ -69,36 +69,59 @@ pub async fn github_webhook(
         "Parsed webhook payload"
     );
 
+    if repo_name.is_empty() || push_ref.is_empty() {
+        error!(
+            repo = repo_name,
+            branch = push_ref,
+            "Missing critical webhook fields"
+        );
+        return StatusCode::BAD_REQUEST;
+    }
+
     // 5. Routing Logic
-    if let Some(repo_config) = state.config.repos.get(repo_name) {
-        if push_ref == repo_config.branch {
-            info!(
-                repo = repo_name,
-                branch = push_ref,
-                sender = sender,
-                commits = commit_count,
-                "Trigger matched - starting deployment"
-            );
-            
-            // Fire and Forget (Async Task)
-            let config_clone = repo_config.clone();
-            let name_clone = repo_name.to_string();
-            
-            tokio::spawn(async move {
-                ops::perform_update(name_clone, config_clone).await;
-            });
-            
-            return StatusCode::OK;
-        } else {
+    match state.config.repos.get(repo_name) {
+        Some(repo_config) => {
             debug!(
                 repo = repo_name,
                 received_ref = push_ref,
                 expected_ref = repo_config.branch.as_str(),
-                "Branch mismatch - ignoring"
+                "Checking branch match"
+            );
+
+            if push_ref == repo_config.branch {
+                info!(
+                    repo = repo_name,
+                    branch = push_ref,
+                    sender = sender,
+                    commits = commit_count,
+                    "Trigger matched - starting deployment"
+                );
+                
+                // Fire and Forget (Async Task)
+                let config_clone = repo_config.clone();
+                let name_clone = repo_name.to_string();
+                
+                tokio::spawn(async move {
+                    ops::perform_update(name_clone, config_clone).await;
+                });
+                
+                return StatusCode::OK;
+            } else {
+                debug!(
+                    repo = repo_name,
+                    received_ref = push_ref,
+                    expected_ref = repo_config.branch.as_str(),
+                    "Branch mismatch - ignoring"
+                );
+            }
+        }
+        None => {
+            debug!(
+                repo = repo_name,
+                configured_repos = ?state.config.repos.keys().collect::<Vec<_>>(),
+                "Repository not configured - ignoring"
             );
         }
-    } else {
-        debug!(repo = repo_name, "Repository not configured - ignoring");
     }
 
     StatusCode::OK
